@@ -13,6 +13,17 @@ This module provides a comprehensive solution for RGB-D SLAM (Simultaneous Local
 
 ## Installation
 
+### Install from pypi 
+[rgbdslam is on pypi!](https://pypi.org/project/rgbdslam/)
+
+```sh
+pip install rgbdslam
+```
+
+
+
+### Local install
+
 1. Clone this repository:
     ```sh
     git clone https://github.com/hugohadfield/rgbdslam.git
