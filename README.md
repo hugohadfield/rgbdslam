@@ -124,5 +124,3 @@ This project is licensed under the MIT License.
 ## Contact
 
 For questions or suggestions, please get in contact with Hugo Hadfield, contact details can be found on [his website](https://hh409.user.srcf.net).
-
-
