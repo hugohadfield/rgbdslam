@@ -33,8 +33,8 @@ pip install numpy Pillow click matplotlib tqdm pandas open3d opencv-python scipy
 
 1. Clone this repository:
     ```sh
-    git clone https://github.com/yourusername/rgbd-slam.git
-    cd rgbd-slam
+    git clone https://github.com/hugohadfield/rgbdslam.git
+    cd rgbdslam
     ```
 
 2. Install the required packages:
