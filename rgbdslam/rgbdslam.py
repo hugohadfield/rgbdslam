@@ -348,11 +348,6 @@ def extract_info_from_matrix(matrix: np.ndarray):
     return yaw_rads, delta_distance_m
 
 
-@click.command()
-@click.argument('rgb_path_a', type=click.Path(exists=True))
-@click.argument('depth_path_a', type=click.Path(exists=True))
-@click.argument('rgb_path_b', type=click.Path(exists=True))
-@click.argument('depth_path_b', type=click.Path(exists=True))
 def single_image_pair(rgb_path_a, depth_path_a, rgb_path_b, depth_path_b):
     """
     Combine RGB and Depth images into a single image for processing.
@@ -367,6 +362,15 @@ def single_image_pair(rgb_path_a, depth_path_a, rgb_path_b, depth_path_b):
         print(f"Yaw: {np.degrees(yaw):.2f} degrees, Distance: {distance:.2f} meters")
     else:
         print("Failed to calculate odometry")
+
+
+@click.command()
+@click.argument('rgb_path_a', type=click.Path(exists=True))
+@click.argument('depth_path_a', type=click.Path(exists=True))
+@click.argument('rgb_path_b', type=click.Path(exists=True))
+@click.argument('depth_path_b', type=click.Path(exists=True))
+def cli_single_image_pair(rgb_path_a, depth_path_a, rgb_path_b, depth_path_b):
+    single_image_pair(rgb_path_a, depth_path_a, rgb_path_b, depth_path_b)
 
 
 def load_depth_names(depth_path: str, run_hybrid: bool, batch_size: int) -> List[np.ndarray]:
@@ -478,17 +482,17 @@ def run_batch(
     return df
 
 
-@click.command()
-@click.argument('rgb_path', type=click.Path(exists=True))
-@click.argument('depth_path', type=click.Path(exists=True))
-@click.argument('output_csv')
-def run_on_directory(rgb_path, depth_path, output_csv: str):
+def run_on_directory(
+    rgb_path, 
+    depth_path, 
+    output_csv: str,
+    run_hybrid=True, 
+    batch_size=10,
+    video_frame_rate = 30.0
+):
     """
     Run the RGBD SLAM algorithm on a directory of images with o3d_rgbd_sequence
     """
-    run_hybrid = True
-    batch_size = 10
-
     # Load what is available
     assert os.path.exists(rgb_path), f"RGB path {rgb_path} does not exist"
     assert os.path.exists(depth_path), f"Depth path {depth_path} does not exist"
@@ -504,7 +508,6 @@ def run_on_directory(rgb_path, depth_path, output_csv: str):
     image_numbers = [int(os.path.basename(x).split(".")[0]) for x in rgb_names]
 
     # Calculate the times relative to the first image
-    video_frame_rate = 30.0
     times_s = [(x - image_numbers[0]) / video_frame_rate for x in image_numbers]
     delta_times_s = [times_s[i] - times_s[i-1] for i in range(1, len(times_s))]
     delta_times_s.append(delta_times_s[-1])
@@ -579,10 +582,14 @@ def run_on_directory(rgb_path, depth_path, output_csv: str):
     plt.show()
     
 
+@click.command()
+@click.argument('rgb_path', type=click.Path(exists=True))
+@click.argument('depth_path', type=click.Path(exists=True))
+@click.argument('output_csv')
+def cli(rgb_path, depth_path, output_csv: str):
+    run_on_directory(rgb_path, depth_path, output_csv)
+
 
 if __name__ == "__main__":
-    run_on_directory()
+    cli()
     # Example usage: python3 rgbdslam.py rgb/ depth/ output.csv
-
-    # single_image_pair()
-    # Example usage: python3 rgbdslam.py demo/1500.jpg demo/1500.npy demo/1509.jpg demo/1509.npy
