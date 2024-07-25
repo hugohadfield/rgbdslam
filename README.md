@@ -11,6 +11,19 @@ This module provides a comprehensive solution for RGB-D SLAM (Simultaneous Local
 - **Sequence Processing**: Process sequences of RGB-D images.
 - **Hybrid Visual Odometry**: Combine color and depth information for odometry using feature tracking and 3D points.
 
+## Installation
+
+1. Clone this repository:
+    ```sh
+    git clone https://github.com/hugohadfield/rgbdslam.git
+    cd rgbdslam
+    ```
+
+2. Install with pip:
+    ```sh
+    pip install .
+    ```
+
 ## Dependencies
 
 Ensure you have the following Python libraries installed:
@@ -28,19 +41,6 @@ You can install these dependencies using pip:
 ```sh
 pip install numpy Pillow click matplotlib tqdm pandas open3d opencv-python scipy
 ```
-
-## Installation
-
-1. Clone this repository:
-    ```sh
-    git clone https://github.com/hugohadfield/rgbdslam.git
-    cd rgbdslam
-    ```
-
-2. Install with pip:
-    ```sh
-    pip install .
-    ```
 
 ## Usage
 
