@@ -37,9 +37,9 @@ pip install numpy Pillow click matplotlib tqdm pandas open3d opencv-python scipy
     cd rgbdslam
     ```
 
-2. Install the required packages:
+2. Install with pip:
     ```sh
-    pip install -r requirements.txt
+    pip install .
     ```
 
 ## Usage
