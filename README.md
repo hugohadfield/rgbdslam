@@ -1,6 +1,6 @@
 # RGBD SLAM Module
 
-This module provides a comprehensive solution for RGB-D SLAM (Simultaneous Localization and Mapping) using Python. The code integrates several key libraries, such as OpenCV, Open3D, and SciPy, to process RGB-D images, perform visual odometry, and visualize results.
+This module provides a prototype solution for RGB-D SLAM (Simultaneous Localization and Mapping) using Python. The code integrates several key libraries, such as OpenCV, Open3D, and SciPy, to process RGB-D images, perform visual odometry, and visualize results.
 
 ## Features
 
