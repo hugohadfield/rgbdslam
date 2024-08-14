@@ -690,10 +690,17 @@ def visualise_path(x_positions, y_positions, label_suffix=""):
 @click.argument('depth_path', type=click.Path(exists=True))
 @click.argument('raw_csv')
 @click.argument('processed_csv')
-def cli(rgb_path, depth_path, raw_csv: str, processed_csv: str):
+@click.option('--batch_size', default=10, help="The number of images to process at once")
+@click.option('--video_frame_rate', default=30.0, help="The frame rate of the video")
+def cli(rgb_path, depth_path, raw_csv: str, processed_csv: str, batch_size: int, video_frame_rate = 30.0):
 
     # Run the SLAM algorithm
-    raw_df, processed_df = run_on_directory(rgb_path, depth_path, raw_csv)
+    raw_df, processed_df = run_on_directory(
+        rgb_path, 
+        depth_path, 
+        batch_size=batch_size, 
+        video_frame_rate=video_frame_rate
+    )
 
     # Save the results
     save_results(raw_df, raw_csv)
@@ -723,4 +730,5 @@ def cli(rgb_path, depth_path, raw_csv: str, processed_csv: str):
 
 if __name__ == "__main__":
     cli()
-    # Example usage: python3 slam.py rgb/ depth/ output.csv
+    # Example usage: 
+    # python3 slam.py ../sequence/ ../sequence/ ../output.csv ../processed.csv --batch_size 10 --video_frame_rate 30.0
