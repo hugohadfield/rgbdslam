@@ -15,7 +15,7 @@ setup(
         "open3d",
         "opencv-python",
         "scipy",
-        "bayesfilter"
+        "bayesfilter>=0.0.4",
     ],
     entry_points={
         "console_scripts": [
