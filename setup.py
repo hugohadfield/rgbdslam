@@ -14,7 +14,8 @@ setup(
         "pandas",
         "open3d",
         "opencv-python",
-        "scipy"
+        "scipy",
+        "bayesfilter"
     ],
     entry_points={
         "console_scripts": [

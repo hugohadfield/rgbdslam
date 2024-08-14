@@ -14,6 +14,8 @@ import cv2
 from scipy.spatial.transform import Rotation
 from scipy.optimize import minimize
 
+from rgbdslam.post_process import post_process_speed_and_yaw
+
 
 def load_intrinsics(intrinsics_path: str) -> np.ndarray:
     """
@@ -285,6 +287,7 @@ def hybrid_rgbd_odometry(
             y = normalized_coords[1]
             points_3d.append([x, y, z])
     points_3d = np.array(points_3d)
+
     # Remove any points with a depth less than min and more than max depth
     valid_points_mask = (points_3d[:, 2] > min_depth) & (points_3d[:, 2] < max_depth)
     points_3d = points_3d[valid_points_mask]
@@ -482,10 +485,55 @@ def run_batch(
     return df
 
 
+def integrate_speed_and_curvature(speed_mps, curvature_invm, times_s):
+    """
+    Integrate the speed and curvature to get the x and y positions.
+    """
+    old_x = 0.0
+    old_y = 0.0
+    x_positions = [old_x]
+    y_positions = [old_y]
+    heading_theta = 0.0
+    for i in range(1, len(speed_mps)):
+        delta_time_s = times_s[i] - times_s[i-1]
+        distance_m = speed_mps[i] * delta_time_s
+        yaw_rads = curvature_invm[i] * distance_m
+        heading_theta += yaw_rads
+        new_x = old_x + distance_m * np.cos(heading_theta)
+        new_y = old_y + distance_m * np.sin(heading_theta)
+        old_x = new_x
+        old_y = new_y
+        x_positions.append(new_x)
+        y_positions.append(new_y)
+    return x_positions, y_positions
+
+
+def integrate_speed_and_yaw_rate(speed_mps, yaw_rate_rads_per_sec, times_s):
+    """
+    Integrate the speed and yaw rate to get the x and y positions.
+    """
+    old_x = 0.0
+    old_y = 0.0
+    x_positions = [old_x]
+    y_positions = [old_y]
+    heading_theta = 0.0
+    for i in range(1, len(speed_mps)):
+        delta_time_s = times_s[i] - times_s[i-1]
+        distance_m = speed_mps[i] * delta_time_s
+        yaw_rads = yaw_rate_rads_per_sec[i] * delta_time_s
+        heading_theta += yaw_rads
+        new_x = old_x + distance_m * np.cos(heading_theta)
+        new_y = old_y + distance_m * np.sin(heading_theta)
+        old_x = new_x
+        old_y = new_y
+        x_positions.append(new_x)
+        y_positions.append(new_y)
+    return x_positions, y_positions
+
+
 def run_on_directory(
     rgb_path, 
     depth_path, 
-    output_csv: str,
     run_hybrid=True, 
     batch_size=10,
     video_frame_rate = 30.0
@@ -546,50 +594,133 @@ def run_on_directory(
         yaw_rates.extend(batch_df["yaw_rate"])
         speed_mps.extend(batch_df["speed_mps"])
 
-    # Save
-    print(len(image_numbers), len(yaw_rates), len(speed_mps))
-    df = pd.DataFrame({
-        "frame": image_numbers[1:],
-        "yaw_rate": yaw_rates,
+    # Save the results to a CSV file
+    raw_df = pd.DataFrame({
+        "times_s": times_s[1:],
+        "yaw_rate_rad_per_sec": yaw_rates,
         "speed_mps": speed_mps,
         "success": success_list
     })
+
+    speed_smooth_mps, curvatures_smooth_invm, times_smooth = post_process_speed_and_yaw(speed_mps, yaw_rates, times_s)
+
+    processed_df = pd.DataFrame({
+        "times_s": times_smooth,
+        "curvature_invm": curvatures_smooth_invm,
+        "speed_mps": speed_smooth_mps
+    })
+
+    return raw_df, processed_df
+
+
+def save_results(df, output_csv):
+    """
+    Save the results to a CSV file.
+    """
     Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_csv, index=False)
 
-    df = pd.read_csv(output_csv)
-    image_numbers = df["frame"].values
-    yaw_rates = df["yaw_rate"].values
-    speed_mps = df["speed_mps"].values
-    success_list = df["success"].values
 
-    plt.figure()
-    plt.plot(image_numbers, yaw_rates, label="Yaw rate")
-    # Plot a low pass filter
-    plt.plot(image_numbers, pd.Series(yaw_rates).rolling(window=11).median(), label="Low pass filter")
+def visualise_raw_df(
+    raw_df: pd.DataFrame,
+    mark_success: bool = False
+):  
+    # Load the results
+    times_s = raw_df["times_s"].values
+    yaw_rates = raw_df["yaw_rate_rad_per_sec"].values
+    speed_mps = raw_df["speed_mps"].values
+    success_list = raw_df["success"].values
+    times_s_success = [t for t, s in zip(times_s, success_list) if s]
+    yaw_rates_success = [y for y, s in zip(yaw_rates, success_list) if s]
+    speed_mps_success = [sp for sp, s in zip(speed_mps, success_list) if s]
+
+    plt.figure('Yaw rate')
+    plt.plot(times_s, yaw_rates, label="Yaw rate (raw)")
+    if mark_success:
+        plt.plot(times_s_success, yaw_rates_success, 'ro', label="Yaw rate (success)")
     plt.legend()
     plt.title("Yaw rate")
     plt.xlabel("Frame")
-    plt.ylabel("Degrees per second")
+    plt.ylabel("Rads per second")
 
-    plt.figure()
-    plt.plot(image_numbers, speed_mps, label="Speed")
-    plt.plot(image_numbers, pd.Series(speed_mps).rolling(window=11).median(), label="Low pass filter")
+    plt.figure('Speed')
+    plt.plot(times_s, speed_mps, label="Speed (raw)")
+    if mark_success:
+        plt.plot(times_s_success, speed_mps_success, 'ro', label="Speed (success)")
     plt.legend()
-    plt.title("Distance")
     plt.xlabel("Frame")
     plt.ylabel("Meters per second")
-    plt.show()
-    
+    plt.title("Speed")
+
+
+def visualise_processed_df(
+    processed_df: pd.DataFrame
+):
+    times_s = processed_df["times_s"].values
+    speed_mps = processed_df["speed_mps"].values
+    curvature_invm = processed_df["curvature_invm"].values
+    yaw_rates = [s * c for s, c in zip(speed_mps, curvature_invm)]
+
+    plt.figure('Yaw rate')
+    plt.plot(times_s, yaw_rates, label="Yaw rate (processed)")
+    plt.legend()
+    plt.title("Yaw rate")
+    plt.xlabel("Frame")
+    plt.ylabel("Rads per second")
+
+    plt.figure('Speed')
+    plt.plot(times_s, speed_mps, label="Speed (processed)")
+    plt.legend()
+    plt.xlabel("Frame")
+    plt.ylabel("Meters per second")
+    plt.title("Speed")
+
+
+def visualise_path(x_positions, y_positions, label_suffix=""):
+    plt.figure('Path')
+    plt.plot(x_positions, y_positions, label="Path" + label_suffix)
+    plt.legend()
+    plt.xlabel("X position (meters)")
+    plt.ylabel("Y position (meters)")
+    plt.title("Path")
+
 
 @click.command()
 @click.argument('rgb_path', type=click.Path(exists=True))
 @click.argument('depth_path', type=click.Path(exists=True))
-@click.argument('output_csv')
-def cli(rgb_path, depth_path, output_csv: str):
-    run_on_directory(rgb_path, depth_path, output_csv)
+@click.argument('raw_csv')
+@click.argument('processed_csv')
+def cli(rgb_path, depth_path, raw_csv: str, processed_csv: str):
+
+    # Run the SLAM algorithm
+    raw_df, processed_df = run_on_directory(rgb_path, depth_path, raw_csv)
+
+    # Save the results
+    save_results(raw_df, raw_csv)
+    save_results(processed_df, processed_csv)
+
+    # Visualise the results
+    raw_df = pd.read_csv(raw_csv)
+    processed_df = pd.read_csv(processed_csv)
+    visualise_raw_df(raw_df)
+    visualise_processed_df(processed_df)
+
+    # Integrate the speed and curvature to get the x and y positions
+    x_raw, y_raw = integrate_speed_and_yaw_rate(
+        raw_df["speed_mps"].values,
+        raw_df["yaw_rate_rad_per_sec"].values,
+        raw_df["times_s"].values
+    )
+    x_processed, y_processed = integrate_speed_and_curvature(
+        processed_df["speed_mps"].values, 
+        processed_df["curvature_invm"].values,
+        processed_df["times_s"].values
+    )
+    visualise_path(x_raw, y_raw, " (raw)")
+    visualise_path(x_processed, y_processed, " (processed)")
+    plt.show()
 
 
 if __name__ == "__main__":
     cli()
-    # Example usage: python3 rgbdslam.py rgb/ depth/ output.csv
+    # Example usage: python3 slam.py rgb/ depth/ output.csv
