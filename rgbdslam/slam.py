@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 import numpy as np
 from PIL import Image
 import click
@@ -70,38 +70,55 @@ def visualise_rgbd_matplotlib(rgbd_image: np.ndarray):
     plt.show()
 
 
-def visualise_rgbd_o3d(rgbd_image: np.ndarray):
+def visualise_rgbd_o3d(rgbd_image: np.ndarray, intrinsic_matrix: np.ndarray, f_l_u_array: Optional[np.ndarray]):
     """
     Visualise an RGBD image using Open3D.
     """
     rgb = rgbd_image[:, :, :3].astype(np.uint8)
     depth = rgbd_image[:, :, 3]
-    max_depth = 60
-    depth = np.clip(depth, 0, max_depth)
-    depth = (depth /float(max_depth) * 255).astype(np.uint8)
-    depth = o3d.geometry.Image(depth)
+    depth_trunc = 100.0
+    depth = o3d.geometry.Image(np.array(depth))
     rgb = o3d.geometry.Image(rgb)
 
     rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
-        rgb, depth, convert_rgb_to_intensity=False
+        rgb, depth, convert_rgb_to_intensity=False, depth_scale=1.0, depth_trunc=depth_trunc
     )
 
     # Create a point cloud from the RGBD image
+    width = rgbd_image.shape[1]
+    height = rgbd_image.shape[0]
+    fx = intrinsic_matrix[0, 0]
+    fy = intrinsic_matrix[1, 1]
+    cx = intrinsic_matrix[0, 2]
+    cy = intrinsic_matrix[1, 2]
+    if abs(cx - width/2) > 50 or abs(cy - height/2) > 50:
+        print("WARNING: Intrinsics may be incorrect")
+    intrinsic = o3d.camera.PinholeCameraIntrinsic(width, height, fx, fy, cx, cy)
     pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
         rgbd,
-        o3d.camera.PinholeCameraIntrinsic(
-            o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault
-        )
+        intrinsic
     )
-
     # Flip it, otherwise the point cloud will be upside down
     pcd.transform([[1, 0, 0, 0],
                    [0, -1, 0, 0],
                    [0, 0, -1, 0],
                    [0, 0, 0, 1]])
 
-    # Visualise the point cloud
-    o3d.visualization.draw_geometries([pcd])
+    # Visualise the xyz path on top of the previous point cloud
+    if f_l_u_array is not None:
+        x_y_z_array = np.zeros_like(f_l_u_array)
+        x_y_z_array[:, 0] = -f_l_u_array[:, 1]
+        x_y_z_array[:, 1] = f_l_u_array[:, 2]
+        x_y_z_array[:, 2] = -f_l_u_array[:, 0]
+        # The pcd_path is a separate point cloud and is coloured red
+        pcd_path = o3d.geometry.PointCloud()
+        pcd_path.points = o3d.utility.Vector3dVector(x_y_z_array)
+        pcd_path.paint_uniform_color([1, 0, 0])
+        # Visualise the point cloud and the path
+        o3d.visualization.draw_geometries([pcd_path, pcd], window_name="RGBD Point Cloud")
+    else:
+        # Visualise the point cloud only
+        o3d.visualization.draw_geometries([pcd])
 
 
 def extract_translation_from_4x4_matrix(matrix: np.ndarray) -> np.ndarray:
@@ -131,12 +148,16 @@ def o3d_rgbd_vo(
     depth_a = o3d.geometry.Image(np.array(depth_a))
     rgb_a = o3d.geometry.Image(rgb_a)
     rgbd_a = o3d.geometry.RGBDImage.create_from_color_and_depth(
-        rgb_a, depth_a, depth_scale=1.0, depth_trunc=depth_trunc)
+        rgb_a, depth_a, depth_scale=1.0, depth_trunc=depth_trunc,
+        convert_rgb_to_intensity=False
+    )
 
     depth_b = o3d.geometry.Image(np.array(depth_b))
     rgb_b = o3d.geometry.Image(rgb_b)
     rgbd_b = o3d.geometry.RGBDImage.create_from_color_and_depth(
-        rgb_b, depth_b, depth_scale=1.0, depth_trunc=depth_trunc)
+        rgb_b, depth_b, depth_scale=1.0, depth_trunc=depth_trunc,
+        convert_rgb_to_intensity=False
+    )
 
     intrinsic = o3d.camera.PinholeCameraIntrinsic()
     intrinsic.intrinsic_matrix = intrinsic_matrix
@@ -394,6 +415,8 @@ def load_depth_names(depth_path: str, run_hybrid: bool, batch_size: int) -> List
             number = int(os.path.basename(d).split(".")[0])
             if number % batch_size == 0:
                 final_depth_names.append(d)
+    else:
+        final_depth_names = depth_names
     print(f"Loaded {len(final_depth_names)} depth names")
     return final_depth_names
 
@@ -529,6 +552,27 @@ def integrate_speed_and_yaw_rate(speed_mps, yaw_rate_rads_per_sec, times_s):
         x_positions.append(new_x)
         y_positions.append(new_y)
     return x_positions, y_positions
+
+
+def load_first_intrinsics(depth_path):
+    """
+    Load the intrinsics from the first depth image in a directory.
+    """
+    depth_name = load_depth_names(depth_path, run_hybrid=False, batch_size=1)[0]
+    int_name = depth_name.replace(".npy", "_intrinsics.npy")
+    intrinsics = load_intrinsics(int_name)
+    return intrinsics
+
+
+def load_first_rgbd_image(rgb_path, depth_path):
+    """
+    Load the first RGBD image from a directory.
+    """
+    # Load the first depth and RGB images
+    depth_name = load_depth_names(depth_path, run_hybrid=False, batch_size=1)[0]
+    rgb_name = load_rgb_names(rgb_path)[0]
+    rgbd_image = combine_rgb_depth(rgb_name, depth_name)
+    return rgbd_image
 
 
 def run_on_directory(
@@ -726,6 +770,14 @@ def cli(rgb_path, depth_path, raw_csv: str, processed_csv: str, batch_size: int,
     visualise_path(x_raw, y_raw, " (raw)")
     visualise_path(x_processed, y_processed, " (processed)")
     plt.show()
+
+    rgbd_image = load_first_rgbd_image(rgb_path, depth_path)
+    intrinsic_matrix = load_first_intrinsics(depth_path)
+    visualise_rgbd_o3d(
+        rgbd_image, 
+        intrinsic_matrix, 
+        np.array([x_processed, y_processed, [0.0 for _ in y_processed]]).T
+    )
 
 
 if __name__ == "__main__":
