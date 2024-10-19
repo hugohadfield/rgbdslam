@@ -65,21 +65,21 @@ The module provides a command-line interface (CLI) to process images.
 
 Process a single pair of RGB and depth images:
 ```sh
-python rgbdslam.py single-image-pair <rgb_path_a> <depth_path_a> <rgb_path_b> <depth_path_b>
+python slam.py single-image-pair <rgb_path_a> <depth_path_a> <rgb_path_b> <depth_path_b>
 ```
 
 #### Directory of Images
 
 Process a directory of RGB and depth images:
 ```sh
-python rgbdslam.py run-on-directory <rgb_path> <depth_path> <output_csv>
+python slam.py run-on-directory <rgb_path> <depth_path> <output_csv>
 ```
 
 ### Example
 
 To run the SLAM algorithm on a directory of images:
 ```sh
-python rgbdslam.py run-on-directory rgb/ depth/ output.csv
+python slam.py run-on-directory rgb/ depth/ output.csv
 ```
 
 This command processes all RGB and depth images in the `rgb/` and `depth/` directories and saves the results in `output.csv`.
